@@ -1,0 +1,390 @@
+---
+title: "CodingExample_1"
+author: "MichaelAngelo Confiado"
+date: "10/18/2020"
+output: html_document
+detail: "Coding example from a course project with interpretation of analyses from a wide data gene expression and metabolomics data set (>10000 variables). The original data set is NDA protected and questions are omitted."
+---
+```{r wd and packages, echo= F, include= F}
+#setwd("path")
+library("car")
+library("ggplot2")
+library("psych")
+library("GPArotation")
+library("factoextra")
+library("class")
+library("gmodels")
+library("MASS")
+library("klaR")
+library("mixOmics") 
+library("Hmisc")
+library("reshape2")
+source("*proprietary function*")
+source("*proprietary function*")
+library("tidyverse")
+```
+
+```{r load dataset and qual check, echo = F, include = F}
+raw<- read.delim("file", as.is= T)
+
+#check for NA
+anyNA(raw) #T, NAs present
+table(is.na(raw))
+
+#check for vals < 0
+any(raw < 0, na.rm= T) #F, no values < 0
+```
+ 
+```{r NA sub & confirm, echo = F, include = F}
+for (i in 3:ncol(raw)) {
+        raw[is.na(raw[,i]),i] <- mean(raw[,i], na.rm= T)
+        na_w_mean <- raw
+        }
+
+anyNA(na_w_mean) #sub successful
+```
+ 
+ 
+```{r chi-sq, echo = F, include = T}
+type_mortality <- as.data.frame(na_w_mean[,1:2])
+type_mort_table <- as.data.frame.matrix(table(type_mortality))
+
+#chi-sq, test stat sig diff b/n observed and expected freq
+## H0 <- no sig, mortality independent of type of cancer
+## Ha <- sig, mortality dependent on type of cancer
+
+chisq <- chisq.test(type_mort_table, correct = F); chisq 
+
+# p = 0.05543, accept null hypothesis -- Mortality independent of type of cancer. 
+# ** P-value is close to alpha level (a = 0.05). Further investigation pursued
+```
+
+```{r contributions, echo = F, include = T}
+#creation of contributions table to see greatest contributors
+contributions <- as.data.frame((chisq$observed - chisq$expected)^2/chisq$expected)
+contributions[6,] <- colSums(contributions); rownames(contributions)[6]<-"TotalC"
+contributions$TotalR <- rowSums(contributions)
+contributions <- round(contributions, digits = 2)
+contributions
+```
+####### Table 1. Contributions table of living and deceased based on cancer type. Classical and Neural cancer types are the greatest contributors to the chi-square statistic. 
+
+```{r chi-sq Classical Neural, echo= F, include= T}
+##previous contributions table indicates "Classical" and "Neural" contributed most to Chi-sq value. Performing Chi-square test on these types. 
+
+twotypes_mort_table <- type_mort_table[c(1,4),]
+chisq_twotypes <- chisq.test(twotypes_mort_table, correct= F) 
+chisq_twotypes
+
+#p-value (p = 0.005) < 0,05, reject null hypothesis. mortality associated with these types of cancers.
+```
+
+```{r contribut Class/Neu, echo= F, include= T}
+#contributions table for classical and neural types of cancer
+contr_twotypes <- as.data.frame((chisq_twotypes$observed - chisq_twotypes$expected)^2/chisq_twotypes$expected)
+contr_twotypes[3,] <- colSums(contr_twotypes); rownames(contr_twotypes)[3]<-"TotalC"
+contr_twotypes$TotalR <- rowSums(contr_twotypes)
+contr_twotypes <- round(contr_twotypes, digits = 2) 
+contr_twotypes
+
+#both types contibute almost equally
+```
+####### Table 2. Contributions table of Living/Deceased based on Classical and Neural cancer types. Contributions to the chi-squared statistic is roughly the same for each cell
+
+An initial chi-square test indicates that mortality is independent of cancer type for this data set (p= 0,05543, a= 0.05). However, because the p-value of this chi-square is close to a = 0.05, further evaluation was necessary to see if the greatest contributors to the chi-square statistic (X-squared= 9.2375) will produce significant results. 
+
+As classical and neural cancers were the greatest contributors, a second chi-square test on cancer types "Classical" and "Neural" produces a significant p-value (p=0.005, a= 0.05). Thus, for classical and neural types of cancer mortality is an associated characteristic.
+
+Furthermore, gene expression and metabolite analyses of subjects with either of these two cancer types may be useful to predict mortality.
+
+
+
+```{r all data PCA, echo = F, include = T}
+#centering and scaling data, necessary for PCA to maximize variance from 0
+#metabolomics measurements have a wider range than gene expression
+scaled <- as.data.frame(scale(na_w_mean[,3:11323])) 
+
+#(note: PCA functions provided by professor, not available in packages)
+PCAinput<- #*proprietary function*#(scaled)
+
+types <- as.factor(raw$Type)
+
+#PCA plot
+#*proprietary function*(PCAinput, Groups = types, IndsNames = "no", Title = "Transcriptome and Metabolome PCA")
+```
+####### Figure 3. Principal component analysis of gene expression & metabolomics
+```{r RNA-exp PCA, echo = F, include = T}
+#PCA for gene expression
+scaled_ge <- as.data.frame(scale(na_w_mean[,3:10002])) 
+
+PCAinput_ge<- #*proprietary function*#(scaled_ge)
+
+#*proprietary function*#(PCAinput_ge, Groups = types,  IndsNames = "no", Title = "Transcriptome PCA")
+```
+####### Figure 2. Principal component analysis of gene expression
+```{r metabolic PCA, echo = F, include = T}
+#PCA for metabolomics
+scaled_meta <- as.data.frame(scale(na_w_mean[,10003:11323]))
+
+PCAinput_meta<- #*proprietary function*#(scaled_meta)
+
+#*proprietary function*#(PCAinput_meta, Groups = types, IndsNames = "no", Title = "Metabolome PCA")
+```
+####### Figure 3. Principal component analysis of metabolomic data
+
+A principal component analysis shows that all gene expression and metabolomic profiles of patients with different cancer types cluster together. This may indicate that patients with different cancer types and healthy patients (control) have similar gene expression and metabolite profiles. However, the two principal components with the highest explained variance retains less than 60% of the information in all PCAs, further analyses are needed to obtain underlying information.
+
+
+```{r Correlation, echo= F, include= T}
+#data is non-ordinal, pearson's test is used
+vals_only <- na_w_mean[,3:ncol(raw)]
+
+cor <- rcorr(as.matrix(vals_only), type = "pearson")
+
+#rcorr produces 3 matrices: 1) r = correlation coeff, 2) n = observations, 3) p = p-values
+#assigning cor$r to object
+corr <- cor$r
+
+#replace values < 0.7 w/ NA, viz. genes/metabolites w/ strong correlation
+corr[abs(corr) < 0.7] <- NA
+
+#f(x) to isolate upper triangle,
+get_upper_tri <- function(mat){
+  mat[lower.tri(mat)]<- NA
+  return(mat)
+}
+
+corr_upper_tri <- get_upper_tri(corr)
+
+#melt corr for viz.
+corr_melted <- melt(corr_upper_tri, na.rm = TRUE)
+
+#heatmap
+ggplot(data = corr_melted, aes(Var1, Var2, fill = value)) +
+  geom_raster() +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+    midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme(axis.text = element_blank()) +
+  xlab("Gene/Metabolite 1") +
+  ylab("Gene/Metabolite 2") +
+  geom_vline(xintercept = 10000, size = 1) +
+  geom_hline(yintercept = 10000, size = 1) #lines to separate genes from metabolites
+```
+####### Figure 4. Correlation matrix heatmap. Top-right quadrant is metabolite vs metabolite. Bottom-left quadrant is gene expression vs gene expression. Top-left and bottom-right quadrants are metabolite vs gene expression and gene expression to metabolite, respectively. (Did not perform hierarchical clustering, as the goal was to see overall correlation of the data set and not of individual genes. Additionally, the visualization is computationally taxing for local computing.)
+
+Generally, genes are correlated to other genes, while metabolomites appear less correlated to other metabolites. Gene expression and metabolites are not correlated. Considering gene expression by itself, genes in comparison to other genes show positive and negative correlations, thus multiple pathways are likely expressed, aberrant or not. For metabolomics, metabolites show positive correlation for a select metabolites, but most metabolites are not strongly correlated with each other.
+ 
+
+```{r CAP analysis and plot, echo= F, include= F, warning = F}
+#factorize types
+types_fac<- as.factor(na_w_mean$Type)
+
+#small sample for CAP analysis
+set.seed(123)
+sample <- cbind(sample(vals_only[,1:10000], 1000),sample(vals_only[,10001:ncol(vals_only), 100]))
+
+#CAP results, **f(x) provided by professor
+CAP <- #*proprietary function*#(X = sample, group = types_fac, SUP = NULL, InitialTransform = 5)
+
+#CAP plot
+PlotcxCAP <- #*proprietary function*#(x=CAP, voronoi = F,PlotCircle =T,LabelGroups = F,ConvexHulls = T, LabelVars=T, LabelInd = F, PlotVars = F)
+```
+###### Figure 5. Canonical Analysis of Populations plot for inter-group differences in gene expression and metabolomics based on cancer type.
+
+CAP would be the most fit analysis since what we want is to see how much separation there is between the cancer types and their variables. Based on this analysis there is strong group interaction between all cancers, especially for proneural cancers. Without much separation these groups are similar in gene expression and metabolomics, but there may be underlying differences between gene expression and metabolomics covered by the amount of data collected for genes.
+
+
+
+Gene expression and metabolomics together may not provide the best results within an aggregated data set. THe following analyses are with separated data sets for gene expression and metabolomics.
+```{r Gene/Meta sep, echo = F, include = F}
+#separating gene exp data from metabolomic data
+genes <- na_w_mean[,3:10002]
+genes <- cbind(Type = as.factor(na_w_mean[,1]), Deceased = na_w_mean[,2], genes)
+
+#splitting gene exp data for training and testing
+set.seed(123)
+genes_split <- sample(2, nrow(genes),
+                replace = TRUE,
+                prob = c(0.6, 0.4))
+genes_train <- genes[genes_split==1,]
+genes_test <- genes[genes_split==2,]
+
+#separating metabolomic data from gene exp data
+metab <- na_w_mean[,10003:ncol(na_w_mean)]
+metab <- cbind(Type = as.factor(na_w_mean[,1]), Deceased = na_w_mean[,2], metab)
+
+#splitting metabolomic data for training and testing
+set.seed(123)
+metab_split <- sample(2, nrow(metab),
+                replace = TRUE,
+                prob = c(0.6, 0.4))
+metab_train <- metab[metab_split==1,]
+metab_test <- metab[metab_split==2,]
+```
+
+Gene Expression vs Cancer Type
+```{r Gene Type, echo= F, include= T}
+#PLS-DA for gene expression as indicators of cancer type
+genetype_pls <- plsda(genes_train[,3:ncol(genes_train)], genes_train$Type,
+                      ncomp = 2,
+                      scale = T)
+
+#PLS-DA plot
+plotIndiv(genetype_pls, comp = c(1,2), rep.space= 'X-variate', group = genes_train$Type,
+          legend = TRUE, ellipse = TRUE, title = 'Cancer Type, PLS, X-space')
+
+#PLS-DA training set prediction
+genetype_train_pred <- predict(genetype_pls, genes_train[,3:ncol(genes_train)], dist = "max.dist")
+genetype_train_tab <- table(Predicted = genetype_train_pred$"class"$"max.dist"[,2], Actual = genes_train[,1])
+genetype_train_tab
+
+#PLS-DA testing set prediction
+genetype_test_pred <- predict(genetype_pls, genes_test[,3:ncol(genes_test)], dist = "max.dist")
+genetype_test_tab <- table(Predicted = genetype_test_pred$"class"$"max.dist"[,2], Actual = genes_test[,1])
+genetype_test_tab
+```
+
+Metabolomics vs Cancer Type
+```{r Meta Type, echo= F, include= T}
+#PLS-DA for metabolome as indicator of cancer types
+metabtype_pls <- plsda(metab_train[,3:ncol(metab_train)], metab_train$Type,
+                      ncomp = 2,
+                      scale = T)
+
+#PLS-DA plot
+plotIndiv(metabtype_pls, comp = c(1,2), rep.space= 'X-variate', group = metab_train$Type,
+          legend = TRUE, ellipse = TRUE, title = 'Cancer Type, PLS, X-space')
+
+#PLS-DA training set predictions 
+metabtype_train_pred <- predict(metabtype_pls, metab_train[,3:ncol(metab_train)], dist = "max.dist")
+metabtype_train_tab <- table(Predicted = metabtype_train_pred$"class"$"max.dist"[,2], Actual = metab_train[,1])
+metabtype_train_tab
+
+#PLS-DA testing set predictions
+metabtype_test_pred <- predict(metabtype_pls, metab_test[,3:ncol(metab_test)], dist = "max.dist")
+metabtype_test_tab <- table(Predicted = metabtype_test_pred$"class"$"max.dist"[,2], Actual = metab_test[,1])
+metabtype_test_tab
+```
+
+
+Gene expression and Mortality
+```{r Gene Deceased, echo= F, include= T}
+#PLS-DA for gene expression as indication of mortality for these cancer types
+genemort_pls <- plsda(genes_train[,3:ncol(genes_train)], genes_train$Deceased,
+                      ncomp = 2,
+                      scale = T)
+
+#PLS-DA plot
+plotIndiv(genemort_pls, comp = c(1,2), rep.space= 'X-variate', group = genes_train$Deceased,
+          legend = TRUE, ellipse = TRUE, title = 'Cancer Type, PLS, X-space')
+
+#PLS-DA training set predictions 
+genemort_train_pred <- predict(genemort_pls, genes_train[,3:ncol(genes_train)], dist = "max.dist")
+genemort_train_tab <- table(Predicted = genemort_train_pred$"class"$"max.dist"[,2], Actual = genes_train[,2])
+genemort_train_tab
+
+#PLS-DA testing set predictions
+genemort_test_pred <- predict(genemort_pls, genes_test[,3:ncol(genes_test)], dist = "max.dist")
+genemort_test_tab <- table(Predicted = genemort_test_pred$"class"$"max.dist"[,2], Actual = genes_test[,2])
+genemort_test_tab
+```
+
+Metabolomics and Mortality
+```{r Meta Deceased, echo= F, include= T}
+#PLS-DA for metabolome as an indicator of mortality for these cancer types
+metabmort_pls <- plsda(metab_train[,3:ncol(metab_train)], metab_train$Deceased,
+                      ncomp = 2,
+                      scale = T)
+
+#PLS-DA plot
+plotIndiv(metabmort_pls, comp = c(1,2), rep.space= 'X-variate', group = metab_train$Deceased,
+          legend = TRUE, ellipse = TRUE, title = 'Cancer Type, PLS, X-space')
+
+#PLS-DA training set prediction
+metabmort_train_pred <- predict(metabmort_pls, metab_train[,3:ncol(metab_train)], dist = "max.dist")
+metabmort_train_tab <- table(Predicted = metabmort_train_pred$"class"$"max.dist"[,2], 
+                             Actual = metab_train$Deceased)
+metabmort_train_tab
+
+#PLS-DA testing set prediction
+metabmort_test_pred <- predict(metabmort_pls, metab_test[,3:ncol(metab_test)], dist = "max.dist")
+metabmort_test_tab <- table(Predicted = metabmort_test_pred$"class"$"max.dist"[,2], 
+                            Actual = metab_test$Deceased)
+metabmort_test_tab
+```
+Predictions of cancer type and mortality based on gene expression and metabolite levels is not appropriate given the PLS outcomes for this data set, even as separated data sets. Cancer types and mortality show strong overlap for both gene exp and metabolomic data. 
+
+
+However, gene expression and metabolomics may have an enhanced predictive power when their separate outcomes are integrated.
+```{r data partitions}
+#building blocks for block-PLS, ensuring each observation has same types and mortality among observations
+vals_split <- sample(2, nrow(vals_only),
+                replace = TRUE,
+                prob = c(0.6, 0.4))
+block_train <- list("Gene Exp" = genes[vals_split == 1, 3:ncol(genes)], 
+                    "Metabolomics" = metab[vals_split == 1, 3:ncol(metab)])
+block_train_types <- na_w_mean[vals_split == 1, 1]
+block_train_mort <- na_w_mean[vals_split == 1, 2]
+block_test <- list("Gene Exp" = genes[vals_split == 2, 3:ncol(genes)], 
+                   "Metabolomics" = metab[vals_split == 2, 3:ncol(metab)])
+block_test_types <- na_w_mean[vals_split == 2, 1]
+block_test_mort <- na_w_mean[vals_split == 2, 2]
+```
+
+```{r block PLS type, echo= F, include= T}
+#block PLS-DA to analyze integrated predictions from both data sets as indicators of cancer type
+types_blockpls<- block.plsda(block_train, block_train_types, 
+                             ncomp = 2,
+                             scale = TRUE,
+                             tol = 1e-06,
+                             max.iter = 100,
+                             near.zero.var = FALSE,
+                             all.outputs = TRUE)
+
+plotIndiv(types_blockpls, comp = c(1,2), rep.space= 'Y-variate', group = block_train_types,
+          ind.names = block_train_types,
+          legend = TRUE, title = 'Cancer Type, PLS, Y-space')
+
+types_block_train_pred <- predict(types_blockpls, block_train, dist = "max.dist")
+types_block_train_tab <- table(Predicted = types_block_train_pred$"MajorityVote"$"max.dist"[,1], 
+                       Actual = block_train_types)
+types_block_train_tab
+
+types_block_test_pred <- predict(types_blockpls, block_test, dist = "max.dist")
+types_block_test_tab <- table(Predicted = types_block_test_pred$"MajorityVote"$"max.dist"[,1], 
+                       Actual = block_test_types)
+types_block_test_tab
+```
+###### Figure 3. Block PLS plot of gene expression and metabolomics vs. cancer type.
+
+```{r block PLS deceased, echo= F, include= T}
+mort_blockpls<- block.plsda(block_train, block_train_mort, 
+                             ncomp = 2,
+                             scale = TRUE,
+                             tol = 1e-06,
+                             max.iter = 100,
+                             near.zero.var = FALSE,
+                             all.outputs = TRUE)
+
+plotIndiv(mort_blockpls, comp = c(1,2), rep.space= 'Y-variate', group = block_train_mort,
+          ind.names = block_train_mort,
+          legend = TRUE, title = 'Cancer Mortality, PLS, Y-space')
+
+mort_block_train_pred <- predict(mort_blockpls, block_train, dist = "max.dist")
+mort_block_train_tab <- table(Predicted = mort_block_train_pred$"MajorityVote"$"max.dist"[,1], 
+                       Actual = block_train_mort)
+mort_block_train_tab
+
+mort_block_test_pred <- predict(mort_blockpls, block_test, dist = "max.dist")
+mort_block_test_tab <- table(Predicted = mort_block_test_pred$"MajorityVote"$"max.dist"[,1], 
+                       Actual = block_test_mort)
+mort_block_test_tab
+```
+###### Figure 4. Block PLS plot of gene expression (left) and metabolomics (right) vs. Living(1)/Deceased(0).
+
+Similar to the outcomes of the individual PLS analyses, a preliminary block PLS analysis failed to capture and predict all cancer types within the data provided based on gene expression and metabolite levels. 
+
+
+Conclusion:
+For this gene expression and metabolomics data set with 306 observations, gene expression and metabolite data do not appear to be sufficient predictors of cancer type and mortality. One consideration for further analyses is the removal of the control group, as their levels may be influencing computations overall. However, the analyses provided may indicate that gene expression and metabolite levels may be more similar based on the data provided. Additionally, increasing the number of observations may enhance predictions as well. Of note, calculations in a local environment are computationally taxing, and minimal calculations were done to save on speed and other operations. 
