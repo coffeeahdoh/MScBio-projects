@@ -3,7 +3,7 @@ title: "CodingExample_1"
 author: "MichaelAngelo Confiado"
 date: "10/18/2020"
 output: html_document
-detail: "Coding example from a course project with interpretation of analyses from a wide data gene expression and metabolomics data set (>10000 variables). The original data set is NDA protected and questions are omitted."
+detail: "Coding example from a course project with interpretation of analyses from a wide gene expression and metabolomics data set (11321 variables, 306 observations). The original data set is NDA protected, functions provided by professor are removed, and some analyses were kept. "
 ---
 ```{r wd and packages, echo= F, include= F}
 #setwd("path")
